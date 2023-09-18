@@ -1,31 +1,37 @@
+# This imports the Pandas library for data manipulation,NumPy for numerical operations, and Plotly for data visualization.
 import pandas as pd
 import numpy as np
 import plotly.offline as plt
 import plotly.graph_objs as go
-plt.init_notebook_mode()
+
+# This sets up Plotly to work in a Jupyter Notebook environment
+#plt.init_notebook_mode()
+
+# These are additional libraries used for various purposes, including file operations, random number generation, mathematical calculations, progress tracking, and machine learning metrics.
 import os
 import random
 import math
 from tqdm import tqdm
 from sklearn.metrics import mean_squared_error
 from scipy.stats import spearmanr
-import theano
-theano.config.compute_test_value = 'raise'
+import csv
 from multiprocessing import Pool, cpu_count
 
+# These are constant values and variables used throughout the code. DATA_DIR specifies the directory where data is located, SONGS_FILE is the name of the CSV file containing song data, and other variables are hyperparameters and counters.
 DATA_DIR = "../data/"
 SONGS_FILE = "songs.csv"
-NFEATURE = 21 #Number of Features
+NFEATURE = 15 #Number of Features
 S = 50 #Hyper Parameter
 totReco = 0 #Number of total recommendation till now
 startConstant = 5 #for low penalty in starting phase
 
-###Read data
+# This line reads the song data from a CSV file into a Pandas DataFrame named Songs.
 Songs = pd.read_csv(DATA_DIR + SONGS_FILE, index_col=0)
 
+# This set will be used to keep track of songs that have been rated by the user.
 ratedSongs = set()
 
-
+# This function calculates a utility score based on user preferences and song features. It takes user features, song features, and the current epoch as inputs and returns a utility score.
 def compute_utility(user_features, song_features, epoch, s=S):
     """ Compute utility U based on user preferences and song preferences """
     user_features = user_features.copy()
@@ -35,6 +41,7 @@ def compute_utility(user_features, song_features, epoch, s=S):
     res = dot * ee
     return res
 
+# This function extracts features from a song, assuming the song is a Pandas Series or DataFrame.
 def get_song_features(song):
     """ Feature of particular song """
     if isinstance(song, pd.Series):
@@ -44,6 +51,7 @@ def get_song_features(song):
     else:
         raise TypeError("{} should be a Series or DataFrame".format(song))
     
+# This function recommends the song with the highest utility score based on user features and exploration-exploitation parameters.
 def best_recommendation(user_features, epoch, s):
     global Songs
     Songs = Songs.copy()
@@ -55,6 +63,7 @@ def best_recommendation(user_features, epoch, s):
         utilities[i] = compute_utility(user_features, song_features, epoch - song.last_t, s)
     return Songs[Songs.index == Songs.index[utilities.argmax()]]
 
+# This function provides the top 10 song recommendations using a combination of exploration and exploitation.
 def all_recommendation(user_features):
     """ Top 10 songs with using exploration and exploitation """
     global Songs
@@ -68,6 +77,7 @@ def all_recommendation(user_features):
         i += 1
     return recoSongs
 
+# This function randomly selects a song that hasn't been rated yet.
 def random_choice():
     """ Random songs which aren't been rated yet """
     global Songs
@@ -77,6 +87,7 @@ def random_choice():
         song = Songs.sample()
     return song
 
+# This function implements a greedy approach to song selection based on user preferences and exploration parameters.
 def greedy_choice(user_features, epoch, s):
     """ greedy approach to the problem """
     global totReco
@@ -87,6 +98,7 @@ def greedy_choice(user_features, epoch, s):
     else:
         return random_choice()
 
+# This is a variation of the greedy strategy without using the "last_t" parameter.
 def greedy_choice_no_t(user_features, epoch, s, epsilon=0.3):
     """ greedy approach to the problem. After some iteration value of epsilon will be constant """
     global totReco
@@ -95,30 +107,33 @@ def greedy_choice_no_t(user_features, epoch, s, epsilon=0.3):
         return best_recommendation(user_features, epoch, s)
     else:
         return random_choice()
-        
+
+# This function computes the new mean value with a penalty applied in the starting phase.
 def iterative_mean(old, new, t):
     """ Compute the new mean, Added startConstant for low penalty in starting phase """
     t += startConstant
     return ((t-1) / t) * old + (1/t) * new
     
+# This function updates user features based on the rated song's features and rating.
 def update_features(user_features, song_features, rating, t):
     return iterative_mean(user_features, song_features * rating, 1.0*float(t)+1.0)
 
+# This function implements the reinforcement learning process, where the user rates songs and their preferences are updated.
 def reinforcement_learning(s=200, N=5):
     global Songs
     Songs = Songs.copy()
     
     user_features = np.zeros(NFEATURE)
     print ("Select song features that you like")
-    Features = ["1980s", "1990s", "2000s", "2010s", "2020s", "Pop", "Rock", "Country", "Folk", "Dance", "Grunge", "Love", "Metal", "Classic", "Funk", "Electric", "Acoustic", "Indie", "Jazz", "SoundTrack", "Rap"];
+    Features = ["Rock", "Country", "Folk", "Dance", "Grunge", "Love", "Metal", "Classic", "Funk", "Electric", "Acoustic", "Indie", "Jazz", "SoundTrack", "Rap"];
     for i in range (0,len(Features)):
         print (str(i+1) + ". " + Features[i])
     choice = "y"
     likedFeat = set()
     while (choice.lower().strip() == "y"):
-        num = raw_input("Enter number associated with feature: ")
+        num = input("Enter number associated with feature: ")
         likedFeat.add(Features[int(num)-1])
-        choice=raw_input("Do you want to add another feature? (y/n) ");
+        choice=input("Do you want to add another feature? (y/n) ");
     for i in range (0,len(Features)):
         if(Features[i] in likedFeat):
             user_features[i] = 1.0/len(likedFeat)
@@ -140,17 +155,20 @@ def reinforcement_learning(s=200, N=5):
     return user_features
 
 
-#removing votes and rating column from dataframe
+# Removing votes and rating column from dataframe
+# This code adds a "last_t" column filled with "-S" values to the Songs DataFrame.
 arr = []
 for i in range(Songs.shape[0]):
     arr.append(-S)
 arr = np.array(arr)
 Songs.insert(0, 'last_t', arr)
 
+# This function call initiates the user interaction for rating songs and updating preferences.
 user_features = reinforcement_learning()
 
 
-#UI
+#UI loop
+# This loop allows the user to receive song recommendations, rate them, and continue getting recommendations as long as they choose to do so.
 choice = "y"
 while choice == "y":
     print ("\nWait \n\n")
@@ -165,11 +183,11 @@ while choice == "y":
         if(music.index[0] in ratedSongs):
             print ("Song already rated")
             continue
-        inn = raw_input("Rate " + music.index[0] + " (1/10): ")
+        inn = input("Rate " + music.index[0] + " (1/10): ")
         if(inn.strip() != ""):
             ratedSongs.add(music.index[0])
             song_features = get_song_features(music)
             user_features = update_features(user_features, song_features, int(inn), totReco)
         
     
-    choice = raw_input("\nDo you want more recommendations? (y/n) ").strip()
+    choice = input("\nDo you want more recommendations? (y/n) ").strip()
